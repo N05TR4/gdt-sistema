@@ -1,0 +1,225 @@
+{
+  "info": {
+    "name": "GDT - Sistema de Gestión de Declaraciones Tributarias",
+    "description": "Colección de requests para probar la API de GDT",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://localhost:5001",
+      "type": "string"
+    },
+    {
+      "key": "rnc",
+      "value": "123456789",
+      "type": "string"
+    },
+    {
+      "key": "declaracionId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones", "health"]
+        },
+        "description": "Verifica que el servicio esté funcionando correctamente"
+      }
+    },
+    {
+      "name": "Crear Declaración ISR",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "if (pm.response.code === 201) {",
+              "    var jsonData = pm.response.json();",
+              "    pm.environment.set('declaracionId', jsonData.id);",
+              "    console.log('ID de declaración guardado:', jsonData.id);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rnc\": \"{{rnc}}\",\n  \"razonSocial\": \"Empresa Ejemplo SRL\",\n  \"periodo\": \"2024-11-01\",\n  \"tipoImpuesto\": 1,\n  \"montoIngresos\": 1000000.00,\n  \"montoGastos\": 600000.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones"]
+        },
+        "description": "Crea una nueva declaración de ISR en estado Borrador"
+      }
+    },
+    {
+      "name": "Crear Declaración ITBIS",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rnc\": \"{{rnc}}\",\n  \"razonSocial\": \"Empresa Ejemplo SRL\",\n  \"periodo\": \"2024-12-01\",\n  \"tipoImpuesto\": 2,\n  \"montoIngresos\": 2500000.00,\n  \"montoGastos\": 1800000.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones"]
+        },
+        "description": "Crea una nueva declaración de ITBIS"
+      }
+    },
+    {
+      "name": "Obtener Declaración por ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones/{{declaracionId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones", "{{declaracionId}}"]
+        },
+        "description": "Obtiene los detalles completos de una declaración específica"
+      }
+    },
+    {
+      "name": "Listar Declaraciones por RNC",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones/contribuyente/{{rnc}}?pagina=1&tamañoPagina=10",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones", "contribuyente", "{{rnc}}"],
+          "query": [
+            {
+              "key": "pagina",
+              "value": "1"
+            },
+            {
+              "key": "tamañoPagina",
+              "value": "10"
+            }
+          ]
+        },
+        "description": "Lista todas las declaraciones de un contribuyente con paginación"
+      }
+    },
+    {
+      "name": "Actualizar Montos",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"montoIngresos\": 1200000.00,\n  \"montoGastos\": 700000.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones/{{declaracionId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones", "{{declaracionId}}"]
+        },
+        "description": "Actualiza los montos de una declaración en estado Borrador (recalcula impuestos automáticamente)"
+      }
+    },
+    {
+      "name": "Presentar Declaración",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones/{{declaracionId}}/presentar",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones", "{{declaracionId}}", "presentar"]
+        },
+        "description": "Presenta oficialmente la declaración (cambia estado a Presentada, calcula sanciones si aplica)"
+      }
+    },
+    {
+      "name": "Intentar Modificar Declaración Presentada (DEBE FALLAR)",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"montoIngresos\": 999999.00,\n  \"montoGastos\": 500000.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones/{{declaracionId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones", "{{declaracionId}}"]
+        },
+        "description": "Test negativo: Intenta modificar una declaración ya presentada. Debe retornar error 400."
+      }
+    },
+    {
+      "name": "Obtener Declaración Inexistente (DEBE FALLAR)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones/00000000-0000-0000-0000-000000000000",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones", "00000000-0000-0000-0000-000000000000"]
+        },
+        "description": "Test negativo: Busca una declaración que no existe. Debe retornar 404."
+      }
+    },
+    {
+      "name": "Crear Declaración con Datos Inválidos (DEBE FALLAR)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"rnc\": \"ABC\",\n  \"razonSocial\": \"\",\n  \"periodo\": \"2024-11-01\",\n  \"tipoImpuesto\": 1,\n  \"montoIngresos\": -1000.00,\n  \"montoGastos\": 600000.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/api/declaraciones",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "declaraciones"]
+        },
+        "description": "Test negativo: Intenta crear declaración con RNC inválido y montos negativos. Debe retornar 400."
+      }
+    }
+  ]
+}
