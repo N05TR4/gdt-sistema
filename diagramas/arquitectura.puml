@@ -15,8 +15,8 @@ package "Capa de Aplicación" {
 
 package "Capa de Dominio" {
   [Declaracion Entity] as Entity
-  [TipoImpuesto Enum] as Enum1
-  [EstadoDeclaracion Enum] as Enum2
+  [TipoImpuesto Enum] as EnumTipo
+  [EstadoDeclaracion Enum] as EnumEstado
   [Business Rules] as Rules
 }
 
@@ -32,44 +32,66 @@ package "Aspectos Transversales" {
   [Validation] as Valid
 }
 
-Controller --> AppService : Usa
-Controller --> DTOs : Usa
-AppService --> IRepo : Depende de
-AppService --> Entity : Manipula
-Entity --> Rules : Aplica
-Entity --> Enum1 : Usa
-Entity --> Enum2 : Usa
-IRepo <|.. Repo : Implementa
-Repo --> DbContext : Usa
-DbContext --> DB : Persiste en
+Controller --> AppService : usa
+Controller --> DTOs : mapea
+AppService --> IRepo : depende
+AppService --> Entity : manipula
+Entity --> Rules : aplica
+Entity --> EnumTipo : usa
+Entity --> EnumEstado : usa
 
-Middleware --> Log : Registra
-Middleware --> ExHandler : Maneja errores
-Controller --> Valid : Valida
+Repo --> DbContext : usa
+DbContext --> DB : ORM
+
+AppService --> Log : registra
+AppService --> ExHandler : maneja errores
+AppService --> Valid : valida DTOs
+
+Middleware --> Controller : invoca
+Middleware --> ExHandler : captura errores
+
+note top of "Capa de Presentación"
+  Maneja HTTP, rutas, autenticación
+  y mapea requests a DTOs/controladores.
+end note
+
+note top of "Capa de Aplicación"
+  Orquesta casos de uso, coordina
+  entre Presentación y Dominio.
+end note
+
+note top of "Capa de Dominio"
+  Reglas de negocio puras, independientes
+  de infraestructura y frameworks.
+end note
+
+note top of "Capa de Infraestructura"
+  Implementaciones técnicas:
+  repositorios, ORM, base de datos.
+end note
 
 note right of Entity
-  **Entidad Rica**
-  - Encapsula lógica de negocio
-  - Validaciones de dominio
-  - Cálculos de impuestos
-  - Transiciones de estado
+  Entidad de dominio rica:
+  - Encapsula lógica
+  - Valida estados
+  - Calcula impuestos
 end note
 
-note right of AppService
-  **Servicios de Aplicación**
-  - Orquesta casos de uso
-  - Coordina transacciones
-  - Mapea entre DTOs y Entidades
+note right of DTOs
+  Objetos de transferencia:
+  - DeclaracionCreateDto
+  - DeclaracionDetailDto
 end note
 
-note right of Controller
-  **API REST**
-  - Endpoints HTTP
-  - Validación de entrada
-  - Mapeo de códigos de estado
+note bottom of IRepo
+  Contrato de acceso a datos:
+  + Add(Declaracion)
+  + GetById(id)
+  + GetByPeriodo(rnc, periodo)
 end note
 
 @enduml
+
 
 @startuml Microservicios_GDT
 !theme plain
@@ -84,7 +106,7 @@ cloud "API Gateway" {
 }
 
 package "Identity Service" {
-  [Auth Controller] as AuthCtrl
+  [Auth API] as AuthAPI
   database "Identity DB" as IdentityDB
 }
 
@@ -94,13 +116,12 @@ package "Declaraciones Service" {
 }
 
 package "Cálculos Service" {
-  [Cálculos API] as CalcAPI
-  note right: Stateless\nHorizontalmente escalable
+  [Calculos API] as CalcAPI
 }
 
 package "Validaciones Service" {
   [Validaciones API] as ValidAPI
-  database "Cache" as Cache
+  database "Cache Distribuida" as Cache
 }
 
 package "Notificaciones Service" {
@@ -121,316 +142,21 @@ cloud "Observabilidad" {
   [Distributed Tracing] as Trace
 }
 
-Client --> Gateway : HTTPS
-Gateway --> RateLimit
-Gateway --> Auth
-Gateway --> DeclAPI : Rutea
-Gateway --> ValidAPI : Rutea
+Client --> Gateway : HTTP
+Gateway --> AuthAPI : /api/auth/*
+Gateway --> DeclAPI : /api/declaraciones/*
+Gateway --> CalcAPI : /api/calculos/*
+Gateway --> ValidAPI : /api/validaciones/*
+Gateway --> NotifAPI : /api/notificaciones/*
 
-DeclAPI --> IdentityDB : Valida token
-DeclAPI --> DeclDB : Persiste
-DeclAPI --> Bus : Publica eventos
+AuthAPI --> IdentityDB
+DeclAPI --> DeclDB
+ValidAPI --> Cache
 
-Bus --> ValidAPI : Suscrito
-Bus --> CalcAPI : Suscrito
-Bus --> NotifAPI : Suscrito
-
-ValidAPI --> Cache : Usa
-ValidAPI --> Bus : Publica eventos
-
-CalcAPI --> Bus : Publica resultados
-
-NotifAPI --> Email : Envía
-NotifAPI --> SMS : Envía
-
-DeclAPI --> Insights : Telemetría
-ValidAPI --> Insights : Telemetría
-CalcAPI --> Insights : Telemetría
-
-DeclAPI --> Trace : Distributed tracing
-ValidAPI --> Trace : Distributed tracing
-
-note right of Bus
-  **Comunicación Asíncrona**
-  - Desacoplamiento temporal
-  - Event-driven architecture
-  - Saga pattern para transacciones
-end note
-
-note right of Gateway
-  **Punto de Entrada Único**
-  - Routing inteligente
-  - Autenticación centralizada
-  - Rate limiting
-  - Caching
-end note
-
-@enduml
-
-@startuml Flujo_Presentacion_Capas
-!theme plain
-title Flujo de Presentación de Declaración - Arquitectura en Capas
-
-actor "Contribuyente" as User
-participant "API Gateway" as Gateway
-participant "Controller" as Ctrl
-participant "Service" as Svc
-participant "Repository" as Repo
-participant "DbContext" as Ctx
-database "SQL Server" as DB
-
-User -> Gateway : POST /api/declaraciones\n{datos declaración}
-activate Gateway
-
-Gateway -> Ctrl : HTTP Request
-activate Ctrl
-
-Ctrl -> Svc : CrearDeclaracionAsync(dto)
-activate Svc
-
-Svc -> Svc : Validar no existe\ndeclaración duplicada
-
-Svc -> Repo : ExisteDeclaracionParaPeriodo()
-activate Repo
-Repo -> Ctx : Query
-activate Ctx
-Ctx -> DB : SELECT
-DB --> Ctx : Result
-Ctx --> Repo : false
-deactivate Ctx
-Repo --> Svc : false
-deactivate Repo
-
-Svc -> Svc : Declaracion.Crear()
-note right
-  **Lógica de Dominio**
-  - Validar RNC
-  - Generar número
-  - Calcular impuesto ISR
-  - Estado = Borrador
-end note
-
-Svc -> Repo : CrearAsync(declaracion)
-activate Repo
-Repo -> Ctx : Add(declaracion)
-activate Ctx
-Ctx -> Ctx : BEGIN TRANSACTION
-Ctx -> DB : INSERT INTO Declaraciones
-DB --> Ctx : Success
-Ctx -> Ctx : COMMIT TRANSACTION
-Ctx --> Repo : declaracion
-deactivate Ctx
-Repo --> Svc : declaracion
-deactivate Repo
-
-Svc -> Svc : MapearADto()
-Svc --> Ctrl : DeclaracionDto
-deactivate Svc
-
-Ctrl --> Gateway : HTTP 201 Created\n{declaracionDto}
-deactivate Ctrl
-
-Gateway --> User : Response JSON
-deactivate Gateway
-
-note over DB
-  **Transacción ACID**
-  - Atomicidad garantizada
-  - Consistencia inmediata
-  - Sin eventual consistency
-  - Latencia: < 50ms
-end note
-
-@enduml
-
-@startuml Flujo_Presentacion_Microservicios
-!theme plain
-title Flujo de Presentación de Declaración - Microservicios (Asíncrono)
-
-actor "Contribuyente" as User
-participant "API Gateway" as Gateway
-participant "Declaraciones\nService" as DeclSvc
-database "Declaraciones DB" as DeclDB
-queue "Service Bus" as Bus
-participant "Validaciones\nService" as ValidSvc
-participant "Cálculos\nService" as CalcSvc
-participant "Notificaciones\nService" as NotifSvc
-
-User -> Gateway : POST /api/declaraciones
-activate Gateway
-
-Gateway -> DeclSvc : HTTP Request
-activate DeclSvc
-
-DeclSvc -> DeclDB : INSERT declaración\n(Estado: Pendiente)
-activate DeclDB
-DeclDB --> DeclSvc : Success
-deactivate DeclDB
-
-DeclSvc -> Bus : Publish\n"DeclaracionCreada"
-activate Bus
-
-DeclSvc --> Gateway : HTTP 202 Accepted\n{id, estado: "Pendiente"}
-deactivate DeclSvc
-
-Gateway --> User : Response
-deactivate Gateway
-note right: Usuario recibe respuesta\ninmediatamente
-
-Bus -> ValidSvc : Event: DeclaracionCreada
-deactivate Bus
-activate ValidSvc
-
-ValidSvc -> ValidSvc : Validar RNC con JCE
-note right: Llamada a sistema externo\nPuede tomar 1-5 segundos
-
-alt Validación exitosa
-  ValidSvc -> Bus : Publish\n"DeclaracionValidada"
-  activate Bus
-  
-  Bus -> CalcSvc : Event: DeclaracionValidada
-  deactivate Bus
-  activate CalcSvc
-  
-  CalcSvc -> CalcSvc : Calcular ISR\nAplicar sanciones
-  note right: Cálculos complejos\npueden tomar tiempo
-  
-  CalcSvc -> Bus : Publish\n"CalculosCompletados"
-  activate Bus
-  deactivate CalcSvc
-  
-  Bus -> DeclSvc : Event: CalculosCompletados
-  deactivate Bus
-  activate DeclSvc
-  
-  DeclSvc -> DeclDB : UPDATE declaración\n(Estado: Aprobada)
-  activate DeclDB
-  DeclDB --> DeclSvc : Success
-  deactivate DeclDB
-  
-  DeclSvc -> Bus : Publish\n"DeclaracionAprobada"
-  activate Bus
-  deactivate DeclSvc
-  
-  Bus -> NotifSvc : Event: DeclaracionAprobada
-  deactivate Bus
-  activate NotifSvc
-  
-  NotifSvc -> User : Email/SMS\n"Declaración aprobada"
-  deactivate NotifSvc
-
-else Validación fallida
-  ValidSvc -> Bus : Publish\n"DeclaracionRechazada"
-  activate Bus
-  
-  Bus -> DeclSvc : Event: DeclaracionRechazada
-  deactivate Bus
-  activate DeclSvc
-  
-  DeclSvc -> DeclDB : UPDATE declaración\n(Estado: Rechazada)
-  activate DeclDB
-  DeclDB --> DeclSvc : Success
-  deactivate DeclDB
-  deactivate DeclSvc
-  
-  Bus -> NotifSvc : Notify rejection
-  activate NotifSvc
-  NotifSvc -> User : Email/SMS\n"Declaración rechazada"
-  deactivate NotifSvc
-end
-
-deactivate ValidSvc
-
-note over User, NotifSvc
-  **Procesamiento Asíncrono**
-  - Eventual consistency
-  - Latencia total: 5-30 segundos
-  - Usuario debe consultar estado
-  - Múltiples puntos de fallo
-  - Compensaciones si falla
-end note
-
-@enduml
-
-@startuml Modelo_Dominio
-!theme plain
-title Modelo de Dominio - Entidades y Relaciones
-
-class Declaracion {
-  + Id : Guid
-  + NumeroDeclaracion : string
-  + RNC : string
-  + RazonSocial : string
-  + Periodo : DateOnly
-  + TipoImpuesto : TipoImpuesto
-  + MontoIngresos : decimal
-  + MontoGastos : decimal
-  + BaseImponible : decimal {readonly}
-  + ImpuestoCalculado : decimal
-  + Sancion : decimal
-  + TotalAPagar : decimal {readonly}
-  + Estado : EstadoDeclaracion
-  + FechaCreacion : DateTime
-  + FechaPresentacion : DateTime?
-  + ObservacionesRechazo : string?
-  --
-  + {static} Crear(...) : Declaracion
-  + ActualizarMontos(...) : void
-  + Presentar() : void
-  + Aprobar() : void
-  + Rechazar(string) : void
-  - CalcularImpuesto() : void
-  - CalcularSancion(...) : void
-}
-
-enum TipoImpuesto {
-  ISR = 1
-  ITBIS = 2
-  Selectivo = 3
-}
-
-enum EstadoDeclaracion {
-  Borrador = 1
-  Presentada = 2
-  Aprobada = 3
-  Rechazada = 4
-}
-
-Declaracion --> TipoImpuesto : usa
-Declaracion --> EstadoDeclaracion : tiene
-
-note right of Declaracion::CalcularImpuesto
-  **Lógica de Negocio Encapsulada**
-  
-  ISR (Progresivo):
-  - Hasta 416,220: Exento
-  - 416,221 - 624,329: 15%
-  - 624,330 - 867,123: 20%
-  - Más de 867,123: 25%
-  
-  ITBIS: 18% fijo
-  Selectivo: Variable por producto
-end note
-
-note right of Declaracion::Presentar
-  **Invariantes de Dominio**
-  
-  - Solo Borradores pueden presentarse
-  - Debe tener datos completos
-  - Calcula sanciones si es tardía
-  - Transición de estado atómica
-  - No se puede revertir
-end note
-
-note left of EstadoDeclaracion
-  **Máquina de Estados**
-  
-  Borrador → Presentada
-  Presentada → Aprobada
-  Presentada → Rechazada
-  
-  No se permiten otras
-  transiciones
-end note
-
-@enduml
+DeclAPI --> Bus : publish DeclaracionCreada
+Bus --> ValidAPI : event DeclaracionCreada
+ValidAPI --> Bus : publish DeclaracionValidada
+Bus --> CalcAPI : event DeclaracionValidada
+CalcAPI --> Bus : publish CalculosCompletados
+Bus --> DeclAPI : event CalculosCompletados
+Bus --> Noti
